@@ -34,9 +34,12 @@ public class AttributeContainer {
      * @throws RuntimeException if the attribute does not exist
      */
     public Object getAttribute(String name) {
-        Integer i = attributeIndex(name);
-        if (i != null) return getAttribute(i.intValue());
-        else throw new RuntimeException("illegal property: " + name);
+        for (int i = 0; i < attributes.size(); i++) {
+            if (name.equals(((AttributeInfo) attributes.elementAt(i)).getName()))
+                return getAttribute(i);
+        }
+        throw new RuntimeException("illegal attribute: " + name);
+
     }
 
     /**

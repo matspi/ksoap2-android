@@ -105,13 +105,6 @@ public class SoapEnvelope {
      */
     public SoapEnvelope(int version) {
         this.version = version;
-        setVersion(version);
-    }
-
-    /** Allows ther version to be set.  This should be done before any operation on the Envelope.
-     * @param version one of VER10, VER11 or VER12.
-     */
-    public void setVersion(int version) {
         if (version == SoapEnvelope.VER10) {
             xsi = SoapEnvelope.XSI1999;
             xsd = SoapEnvelope.XSD1999;

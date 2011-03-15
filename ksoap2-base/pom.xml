@@ -24,6 +24,8 @@
 			<groupId>net.sourceforge.kobjects</groupId>
 			<artifactId>kobjects-j2me</artifactId>
 		</dependency>
+
+
 		
 		<dependency>
 			<groupId>junit</groupId>

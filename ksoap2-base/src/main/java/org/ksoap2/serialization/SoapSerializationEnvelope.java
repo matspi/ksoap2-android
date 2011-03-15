@@ -19,8 +19,16 @@
 
 package org.ksoap2.serialization;
 
+import java.io.IOException;
+import java.util.Date;
+import java.util.Hashtable;
+import java.util.Vector;
+
+import org.kobjects.isodate.IsoDate;
+
 import org.ksoap2.SoapEnvelope;
 import org.ksoap2.SoapFault;
+import org.ksoap2.wsdl.SoapObjectWrapper;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 import org.xmlpull.v1.XmlSerializer;
@@ -54,6 +62,7 @@ public class SoapSerializationEnvelope extends SoapEnvelope
 
 	Hashtable idMap = new Hashtable();
 	Vector multiRef; // = new Vector();
+    Vector types = new Vector();
 
 	/**
 	 * Set this variable to true if you don't want that type definitions for complex types/objects
@@ -478,8 +487,9 @@ public class SoapSerializationEnvelope extends SoapEnvelope
 	 * This method is used by the SoapWriter in order to map Java objects to the corresponding SOAP section
 	 * five XML code.
 	 */
-	public Object[] getInfo(Object type, Object instance)
+	public Object[] getInfo(Object itype, Object instance)
 	{
+		Object type=itype;
 		if (type == null)
 		{
 			if (instance instanceof SoapObject || instance instanceof SoapPrimitive)
@@ -581,22 +591,37 @@ public class SoapSerializationEnvelope extends SoapEnvelope
 	 */
 	public void writeBody(XmlSerializer writer) throws IOException
 	{
-		multiRef = new Vector();
-		multiRef.addElement(bodyOut);
-		Object[] qName = getInfo(null, bodyOut);
-		writer.startTag((dotNet) ? "" : (String) qName[QNAME_NAMESPACE], (String) qName[QNAME_TYPE]);
-		if (dotNet)
-		{
-			writer.attribute(null, "xmlns", (String) qName[QNAME_NAMESPACE]);
-		}
-		if (addAdornments)
-		{
-			writer.attribute(null, ID_LABEL, qName[2] == null ? ("o" + 0) : (String) qName[2]);
-			writer.attribute(enc, ROOT_LABEL, "1");
-		}
-		writeElement(writer, bodyOut, null, qName[QNAME_MARSHAL]);
-		writer.endTag((dotNet) ? "" : (String) qName[QNAME_NAMESPACE], (String) qName[QNAME_TYPE]);
-
+	      multiRef = new Vector();
+	      multiRef.addElement(bodyOut);
+	      types.addElement(PropertyInfo.OBJECT_TYPE);
+	      Object[] qName = getInfo(null, bodyOut);
+	      writer.startTag((String) qName[0], (String) qName[1]);
+	      if ( addAdornments ) {
+	        writer.attribute(null, ID_LABEL, qName[2] == null ? ("o" + 0) : (String) qName[2]);
+	        writer.attribute(enc, ROOT_LABEL, "1");
+	      }
+	      if (qName[3] != null) {
+	        ((Marshal) qName[3]).writeInstance(writer, bodyOut);
+	      }
+	      else if (bodyOut instanceof SoapFault) {  // I feel sure that this should be covered elsewhere.
+	        ((SoapFault) bodyOut).write(writer);
+	      }
+	      else if (bodyOut instanceof SoapObjectWrapper) {
+	        writeObjectBody(writer, ((SoapObjectWrapper) bodyOut).getSoapObject());
+	      }
+	      else if (bodyOut instanceof SoapObject) {
+	        writeObjectBody(writer, (SoapObject) bodyOut);
+	      }
+	      else if (bodyOut instanceof KvmSerializable) {
+	        writeObjectBody(writer, (KvmSerializable) bodyOut);
+	      }
+	      else if (bodyOut instanceof Vector) {
+	        writeVectorBody(writer, (Vector) bodyOut, ((PropertyInfo) types.elementAt(0)).elementType);
+	      }
+	      else {
+	        throw new RuntimeException("Cannot serialize: " + bodyOut);
+	      }
+	      writer.endTag((String) qName[0], (String) qName[1]);
 	}
 
 	/**
@@ -605,15 +630,20 @@ public class SoapSerializationEnvelope extends SoapEnvelope
 	 */
 	public void writeObjectBody(XmlSerializer writer, SoapObject obj) throws IOException
 	{
-		SoapObject soapObject = (SoapObject) obj;
-		for (int counter = 0; counter < soapObject.getAttributeCount(); counter++)
-		{
-			AttributeInfo attributeInfo = new AttributeInfo();
-			soapObject.getAttributeInfo(counter, attributeInfo);
-			writer.attribute(attributeInfo.getNamespace(), attributeInfo.getName(), attributeInfo.getValue()
-					.toString());
-		}
-		writeObjectBody(writer, (KvmSerializable) obj);
+      SoapObject soapObject = (SoapObject)obj;
+      for ( int counter = 0 ; counter < soapObject.getAttributeCount(); counter++ ) {
+        AttributeInfo attributeInfo = new AttributeInfo();
+        soapObject.getAttributeInfo(counter, attributeInfo);
+        // this needs full marshalling, but the marshal interface won't work....
+        if ( attributeInfo.getValue() instanceof  Date ) {
+          writer.attribute(attributeInfo.getNamespace(), attributeInfo.getName(), IsoDate.dateToString((Date)attributeInfo.getValue(), IsoDate.DATE_TIME));
+        }
+        else {
+          writer.attribute(attributeInfo.getNamespace(), attributeInfo.getName(), attributeInfo.getValue().toString());
+        }
+      }
+      writeObjectBody (writer, (KvmSerializable)obj);
+
 	}
 
 	/**
@@ -621,47 +651,90 @@ public class SoapSerializationEnvelope extends SoapEnvelope
 	 */
 	public void writeObjectBody(XmlSerializer writer, KvmSerializable obj) throws IOException
 	{
-		PropertyInfo info = new PropertyInfo();
-		int cnt = obj.getPropertyCount();
-		for (int i = 0; i < cnt; i++)
-		{
-			obj.getPropertyInfo(i, properties, info);
-			if ((info.flags & PropertyInfo.TRANSIENT) == 0)
-			{
-				writer.startTag(info.namespace, info.name);
-				writeProperty(writer, obj.getProperty(i), info);
-				writer.endTag(info.namespace, info.name);
-			}
-		}
+      PropertyInfo info = new PropertyInfo();
+      int cnt = obj.getPropertyCount();
+//    String namespace = dotNet ? writer.getNamespace() : ""; // unused...curious
+      for (int i = 0; i < cnt; i++) {
+        obj.getPropertyInfo(i, properties, info);
+        if ((info.flags & PropertyInfo.TRANSIENT) == 0) {
+          // TODO: looks broken here
+          String nsp = info.namespace;
+          //if (nsp == null) nsp = info.namespace;
+          // It's really not clear to me how arrays should be written, but it seems to
+          // match the expecation if we don't write a start/end here.
+          if ( obj.getProperty(i) != null && obj.getProperty(i).getClass().isArray()) {
+            writeProperty(writer, obj.getProperty(i), info);
+          }
+          else {
+            writer.startTag(nsp, info.name);
+            writeProperty(writer, obj.getProperty(i), info);
+            writer.endTag(nsp, info.name);
+          }
+        }
+      }
+
 	}
 
 	protected void writeProperty(XmlSerializer writer, Object obj, PropertyInfo type) throws IOException
 	{
-		if (obj == null)
-		{
-			writer.attribute(xsi, version >= VER12 ? NIL_LABEL : NULL_LABEL, "true");
-			return;
-		}
-		Object[] qName = getInfo(null, obj);
-		if (type.multiRef || qName[2] != null)
-		{
-			int i = multiRef.indexOf(obj);
-			if (i == -1)
-			{
-				i = multiRef.size();
-				multiRef.addElement(obj);
-			}
-			writer.attribute(null, HREF_LABEL, qName[2] == null ? ("#o" + i) : "#" + qName[2]);
-		}
-		else
-		{
-			if (!implicitTypes || obj.getClass() != type.type)
-			{
-				String prefix = writer.getPrefix((String) qName[QNAME_NAMESPACE], true);
-				writer.attribute(xsi, TYPE_LABEL, prefix + ":" + qName[QNAME_TYPE]);
-			}
-			writeElement(writer, obj, type, qName[QNAME_MARSHAL]);
-		}
+	      if (obj == null) {
+	          writer.attribute(xsi, version >= VER12 ? NIL_LABEL : NULL_LABEL, "true");
+	          return;
+	        }
+	        Object[] qName = getInfo(null, obj);
+	        if (type.multiRef || qName[2] != null) {
+	          int i = multiRef.indexOf(obj);
+	          if (i == -1) {
+	            i = multiRef.size();
+	            multiRef.addElement(obj);
+	            types.addElement(type);
+	          }
+	          writer.attribute(null, HREF_LABEL, qName[2] == null ? ("#o" + i) : "#" + qName[2]);
+	        } else {
+	          if (!implicitTypes || obj.getClass() != type.type) {
+	            String prefix = writer.getPrefix((String) qName[0], true);
+	            writer.attribute(xsi, TYPE_LABEL, prefix + ":" + qName[1]);
+	          }
+	          if (qName[3] != null) {
+	            ((Marshal) qName[3]).writeInstance(writer, obj);
+	          }
+	          else if (obj.getClass().isArray()) {
+	            Object[] array = (Object[])obj;
+	            for ( int counter = 0 ; counter < array.length ; counter++ ) {
+	              // we need a new property info for the type of the element
+	              PropertyInfo elementType = new PropertyInfo();
+	              elementType.setType(array[counter].getClass());
+	              elementType.setValue(array[counter]);
+	              elementType.setName(type.getName());
+	              elementType.setNamespace(type.getNamespace());
+	              writer.startTag(elementType.namespace, elementType.name);
+	              writeProperty(writer, array[counter], elementType);
+	              writer.endTag(elementType.namespace, elementType.name);
+//	            if ( array[counter] instanceof SoapObjectWrapper ) {  // other types?
+//	            writeObjectBody(writer, ((SoapObjectWrapper)array[counter]).getSoapObject());
+//	            }
+//	            else if  ( array[counter] instanceof SoapObject ) {
+//	            writeObjectBody(writer, (SoapObject)array[counter]);
+//	            }
+//	            }
+	            }
+	          }
+	          else if (obj instanceof SoapObjectWrapper) {
+	            writeObjectBody(writer, ((SoapObjectWrapper)obj).getSoapObject());
+	          }
+	          else if (obj instanceof SoapObject) {
+	            writeObjectBody(writer, (SoapObject) obj);
+	          }
+	          else if (obj instanceof KvmSerializable) {
+	            writeObjectBody(writer, (KvmSerializable) obj);
+	          }
+	          else if (obj instanceof Vector) {
+	            writeVectorBody(writer, (Vector) obj, type.elementType);
+	          }
+	          else {
+	            throw new RuntimeException("Cannot serialize: " + obj);
+	          }
+	        }
 	}
 
 	private void writeElement(XmlSerializer writer, Object element, PropertyInfo type, Object marshal)
@@ -721,5 +794,19 @@ public class SoapSerializationEnvelope extends SoapEnvelope
 			}
 		}
 	}
+    /**
+     * @return Returns the implicitTypes.
+     */
+    public boolean isImplicitTypes() {
+      return implicitTypes;
+    }
+
+    /**
+     * @param implicitTypes The implicitTypes to set.
+     */
+    public void setImplicitTypes(boolean implicitTypes) {
+      this.implicitTypes = implicitTypes;
+    }
+
 
 }
