@@ -114,7 +114,7 @@ public class SoapObjectTest extends TestCase {
             fail("should have thrown");
         } catch (RuntimeException e) {
             assertEquals(RuntimeException.class.getName(), e.getClass().getName());
-            assertEquals("illegal property: Second", e.getMessage());
+            assertEquals("illegal attribute: Second", e.getMessage());
         }
     }
 
