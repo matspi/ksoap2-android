@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <artifactId>ksoap2-parent</artifactId>
+    <groupId>com.google.code.ksoap2-android</groupId>
+    <version>2.5.5-SNAPSHOT</version>
+  </parent>
+  
+  <artifactId>ksoap2-wsdl2java</artifactId>
+  <name>ksoap2-wsdl2java</name>
+  <packaging>jar</packaging>
+  <dependencies>
+                <dependency>
+                        <groupId>com.google.code.ksoap2-android</groupId>
+                        <artifactId>ksoap2-base</artifactId>
+                </dependency>
+                <dependency>
+                        <groupId>axis</groupId>
+                        <artifactId>axis</artifactId>
+                </dependency>
+
+                <dependency>
+                        <groupId>wsdl4j</groupId>
+                        <artifactId>wsdl4j</artifactId>
+                </dependency>
+
+  </dependencies>
+        <build>
+                <plugins>
+                        <plugin>
+                                <artifactId>maven-assembly-plugin</artifactId>
+                                <configuration>
+                                        <descriptorRefs>
+                                                <descriptorRef>jar-with-dependencies</descriptorRef>
+                                        </descriptorRefs>
+                                </configuration>
+                                <executions>
+                                        <execution>
+                                                <id>make-assembly</id>
+                                                <phase>package</phase>
+                                                <goals>
+                                                        <goal>single</goal>
+                                                </goals>
+                                        </execution>
+                                </executions>
+                        </plugin>
+                </plugins>
+        </build>
+
+
+
+</project>
